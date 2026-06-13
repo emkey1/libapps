@@ -614,6 +614,11 @@ hterm.VT.prototype.parseUnknown_ = function(parseState) {
       str = this[this.GL].GL(str);
     }
 
+    // Remember the last graphic character printed so REP (CSI Pn b) can
+    // repeat it. ncurses apps (e.g. htop) use REP to fill runs of spaces.
+    if (str.length) {
+      this.lastPrintedCharacter_ = str.substr(str.length - 1);
+    }
     this.terminal.print(str);
   };
 
@@ -2507,11 +2512,28 @@ hterm.VT.CSI['a'] = function(parseState) {
 };
 
 /**
- * Repeat the preceding graphic character.
+ * Repeat the Preceding Graphic Character (REP).
  *
- * Not currently implemented.
+ * CSI Pn b - repeat the last printed graphic character Pn (default 1) times.
+ * ncurses apps such as htop use REP to fill runs (e.g. empty meter
+ * backgrounds); ignoring it leaves the cursor un-advanced and collapses the
+ * rest of the line leftward.
  */
-hterm.VT.CSI['b'] = hterm.VT.ignore;
+hterm.VT.CSI['b'] = function(parseState) {
+  if (!this.lastPrintedCharacter_) {
+    return;
+  }
+  let count = parseState.iarg(0, 1);
+  if (count < 1) {
+    count = 1;
+  }
+  // Clamp to the screen area so a bogus count can't blow up memory.
+  const max = this.terminal.screenSize.width * this.terminal.screenSize.height;
+  if (count > max) {
+    count = max;
+  }
+  this.terminal.print(this.lastPrintedCharacter_.repeat(count));
+};
 
 /**
  * Send Device Attributes (Primary DA).
