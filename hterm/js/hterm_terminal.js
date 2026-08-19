@@ -607,6 +607,10 @@ hterm.Terminal.prototype.setProfile = function(
       terminal.keyboard.passMetaV = v;
     },
 
+    'line-height': function(v) {
+      terminal.setLineHeight(v);
+    },
+
     'screen-padding-size': function(v) {
       v = parseInt(v, 10);
       if (isNaN(v) || v < 0) {
@@ -1211,6 +1215,18 @@ hterm.Terminal.prototype.setCursorShape = function(shape) {
  */
 hterm.Terminal.prototype.getCursorShape = function() {
   return this.cursorShape_;
+};
+
+/**
+ * Set the multiplier applied to the measured cell height.
+ *
+ * See the 'line-height' preference for why a cell can be taller than the glyph
+ * it holds. Re-measures, which resizes the screen in rows.
+ *
+ * @param {number} scale
+ */
+hterm.Terminal.prototype.setLineHeight = function(scale) {
+  this.scrollPort_.setLineHeight(scale);
 };
 
 /**

@@ -473,6 +473,28 @@ hterm.PreferenceManager.defaultPreferences = {
       `The default font size in pixels.`,
   ),
 
+  'line-height': hterm.PreferenceManager.definePref_(
+      'Line height',
+      hterm.PreferenceManager.Categories.Appearance,
+      1, 'float',
+      `Multiplier applied to the measured cell height.
+
+      A cell is measured as fontBoundingBoxAscent + fontBoundingBoxDescent --
+      the font's MAXIMUM extent, with room for accents and deep descenders that
+      most glyphs never reach. Cell backgrounds fill that whole box, but a block
+      glyph such as U+2588 only rises to about the em height, so the difference
+      shows as a band above every block character. It is a fixed fraction of the
+      em, so it shrinks with the font but cannot go below one whole pixel:
+      invisible at large sizes, one or two pixels at small ones, which is where
+      it stops lining up with a Powerline separator's background.
+
+      How much of the em a patched font's blocks actually cover varies between
+      Nerd Font patches, so this is a multiplier to tune rather than a formula.
+      1 is the measured height and the historical behaviour; values slightly
+      below it (0.95 or so) close the band. Going too low clips descenders and
+      accents.`,
+  ),
+
   'font-smoothing': hterm.PreferenceManager.definePref_(
       'Text font smoothing',
       hterm.PreferenceManager.Categories.Appearance,

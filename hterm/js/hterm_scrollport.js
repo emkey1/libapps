@@ -58,6 +58,10 @@ hterm.ScrollPort = function(rowProvider) {
   // SWAG the character size until we can measure it.
   this.characterSize = new hterm.Size(10, 10);
 
+  // Multiplier applied to the measured cell height; see setLineHeight and the
+  // 'line-height' preference. 1 is the measured height, i.e. no change.
+  this.lineHeightScale_ = 1;
+
   // DOM node used for character measurement.
   this.ruler_ = null;
 
@@ -758,6 +762,28 @@ hterm.ScrollPort.prototype.setScreenPaddingSize = function(size) {
   this.resize();
 };
 
+/**
+ * Multiplier applied to the measured cell height; see the 'line-height'
+ * preference. 1 is the measured height and the historical behaviour.
+ *
+ * @param {number} scale
+ */
+hterm.ScrollPort.prototype.setLineHeight = function(scale) {
+  scale = parseFloat(scale);
+  // Refuse anything that would collapse the row or invert it. Below about half
+  // the measured height even capitals are cut, so this is a floor against
+  // nonsense, not a claim that everything above it looks right.
+  if (!(scale > 0.5) || !(scale <= 2)) {
+    console.error(`Invalid line height: ${scale}`);
+    return;
+  }
+  if (scale === this.lineHeightScale_) {
+    return;
+  }
+  this.lineHeightScale_ = scale;
+  this.syncCharacterSize();
+};
+
 /** @param {boolean} ctrlVPaste */
 hterm.ScrollPort.prototype.setCtrlVPaste = function(ctrlVPaste) {
   this.ctrlVPaste = ctrlVPaste;
@@ -986,14 +1012,20 @@ hterm.ScrollPort.prototype.measureCharacterSizeModern = function(character, weig
  */
 hterm.ScrollPort.prototype.measureCharacterSize = function(weight = '') {
   let size = this.measureCharacterSizeModern('X', weight);
-  let comparisonSize = this.measureCharacterSizeModern('i', weight);
+  const comparisonSize = this.measureCharacterSizeModern('i', weight);
   // The measurements we are getting do not appear to be monospace, so fallback
   // on the legacy measurements.
   if (size.width != comparisonSize.width) {
-    return this.measureCharacterSizeLegacy(weight);
-  } else {
-    return size;
+    size = this.measureCharacterSizeLegacy(weight);
   }
+  // Applied here rather than inside either measurement so that the legacy
+  // fallback honours it too -- a non-monospace font is exactly the case where
+  // a user is most likely to be tuning this.
+  const scale = this.lineHeightScale_;
+  if (scale && scale !== 1) {
+    size = new hterm.Size(size.width, Math.max(1, Math.round(size.height * scale)));
+  }
+  return size;
 };
 
 /**
