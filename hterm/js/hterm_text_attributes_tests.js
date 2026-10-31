@@ -285,6 +285,24 @@ it('splitWidecharString-surrogates', () => {
   assert.isTrue(actual[1].wcNode, 'The second segment should be wide');
 });
 
+it('splitWidecharString-misfit', () => {
+  // Braille misfits; the accented letter and the wide character do not.
+  const text = 'ab⣿⣿céぁ';
+  const misfit = (g) => g.codePointAt(0) >= 0x2800 && g.codePointAt(0) < 0x2900;
+
+  const actual = hterm.TextAttributes.splitWidecharString(text, misfit);
+  assert.deepEqual(actual.map((t) => t.str),
+                   ['ab', '⣿', '⣿', 'cé', 'ぁ']);
+  assert.deepEqual(actual.map((t) => t.cellNode),
+                   [false, true, true, false, false]);
+  assert.deepEqual(actual.map((t) => t.wcNode),
+                   [false, false, false, false, true]);
+
+  // Without a predicate nothing misfits.
+  const plain = hterm.TextAttributes.splitWidecharString(text);
+  assert.isTrue(plain.every((t) => !t.cellNode));
+});
+
 it('splitWidecharString-ccs', () => {
   const text = 'xA\u030Ax';
 

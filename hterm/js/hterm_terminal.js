@@ -59,6 +59,12 @@ hterm.Terminal = function({profileId} = {}) {
   this.scrollPort_.subscribe('options', this.onOpenOptionsPage_.bind(this));
   this.scrollPort_.onCopy = this.onCopy_.bind(this);
 
+  // Whether each narrow character measured so far misfits its cell; see
+  // isMisfitGlyph_.
+  /** @private {!Map<string, boolean>} */
+  this.misfitGlyphs_ = new Map();
+  this.isMisfitGlyph_ = this.isMisfitGlyph_.bind(this);
+
   // The div that contains this terminal.
   this.div_ = null;
 
@@ -991,6 +997,40 @@ hterm.Terminal.prototype.updateCssCharsize_ = function() {
   this.setCssVar('charsize-width', this.scrollPort_.characterSize.width + 'px');
   this.setCssVar('charsize-height',
                  this.scrollPort_.characterSize.height + 'px');
+  // Which glyphs fit depends on the font they are measured against.
+  this.misfitGlyphs_.clear();
+};
+
+/**
+ * Whether a narrow character's glyph is some width other than one cell.
+ *
+ * A character the font has no glyph for is drawn from a fallback font, at that
+ * font's own advance.  No monospace font iOS ships has braille, which btop and
+ * other TUIs draw their graphs with, and the fallback's braille is 8.20px wide
+ * against a 7.42px cell (ui-monospace, 12px), so every braille character
+ * pushed the rest of its row a tenth of a cell to the right.  print() gives
+ * such a character a container of its own that is exactly one cell wide (see
+ * .cell-node), the way a wide character gets one that is two.
+ *
+ * Measured on the same canvas as the cell itself, once per character until the
+ * font or its size changes.
+ *
+ * @param {string} grapheme A single-width, non-ASCII grapheme.
+ * @return {boolean}
+ * @private
+ */
+hterm.Terminal.prototype.isMisfitGlyph_ = function(grapheme) {
+  let misfit = this.misfitGlyphs_.get(grapheme);
+  if (misfit === undefined) {
+    const width = this.scrollPort_.measureCharacterSizeModern(grapheme).width;
+    misfit = Math.abs(width - this.scrollPort_.characterSize.width) > 0.01;
+    // Combining sequences make the set of graphemes unbounded.
+    if (this.misfitGlyphs_.size >= 4096) {
+      this.misfitGlyphs_.clear();
+    }
+    this.misfitGlyphs_.set(grapheme, misfit);
+  }
+  return misfit;
 };
 
 /**
@@ -1813,6 +1853,15 @@ menuitem:hover {
   width: calc(var(--hterm-charsize-width) * 2);
   line-height: var(--hterm-charsize-height);
 }
+.cell-node {
+  /* Flex rather than text-align: a centred flex item spills evenly over both
+     edges when it is wider than the cell, where overflowing text starts at
+     the left edge and spills only into the next cell. */
+  display: inline-flex;
+  justify-content: center;
+  width: var(--hterm-charsize-width);
+  line-height: var(--hterm-charsize-height);
+}
 :root {
   --hterm-charsize-width: ${this.scrollPort_.characterSize.width}px;
   --hterm-charsize-height: ${this.scrollPort_.characterSize.height}px;
@@ -2195,9 +2244,11 @@ hterm.Terminal.prototype.print = function(str) {
       substr = lib.wc.substr(str, startOffset, count);
     }
 
-    const tokens = hterm.TextAttributes.splitWidecharString(substr);
+    const tokens =
+        hterm.TextAttributes.splitWidecharString(substr, this.isMisfitGlyph_);
     for (let i = 0; i < tokens.length; i++) {
       this.screen_.textAttributes.wcNode = tokens[i].wcNode;
+      this.screen_.textAttributes.cellNode = tokens[i].cellNode;
       this.screen_.textAttributes.asciiNode = tokens[i].asciiNode;
 
       if (this.options_.insertMode) {
@@ -2206,6 +2257,7 @@ hterm.Terminal.prototype.print = function(str) {
         this.screen_.overwriteString(tokens[i].str, tokens[i].wcStrWidth);
       }
       this.screen_.textAttributes.wcNode = false;
+      this.screen_.textAttributes.cellNode = false;
       this.screen_.textAttributes.asciiNode = true;
     }
 

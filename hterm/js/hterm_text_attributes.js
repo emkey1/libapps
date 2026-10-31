@@ -57,6 +57,7 @@ hterm.TextAttributes = function(document) {
   this.inverse = false;
   this.invisible = false;
   this.wcNode = false;
+  this.cellNode = false;
   this.asciiNode = true;
   /** @type {?string} */
   this.tileData = null;
@@ -145,6 +146,7 @@ hterm.TextAttributes.prototype.reset = function() {
   this.inverse = false;
   this.invisible = false;
   this.wcNode = false;
+  this.cellNode = false;
   this.asciiNode = true;
   this.uri = null;
   this.uriId = null;
@@ -167,6 +169,7 @@ hterm.TextAttributes.prototype.isDefault = function() {
           !this.inverse &&
           !this.invisible &&
           !this.wcNode &&
+          !this.cellNode &&
           this.asciiNode &&
           this.tileData == null &&
           this.uri == null);
@@ -179,7 +182,9 @@ hterm.TextAttributes.prototype.isDefault = function() {
  * This method will create a plain text node if the text is unstyled, or
  * an HTML span if the text is styled.  Due to lack of monospace wide character
  * fonts on certain systems (e.g. Chrome OS), we need to put each wide character
- * in a span of CSS class '.wc-node' which has double column width.
+ * in a span of CSS class '.wc-node' which has double column width.  For the
+ * same reason a narrow character whose glyph is not one column wide goes in a
+ * span of CSS class '.cell-node', which is exactly one column wide.
  * Each vt_tiledata tile is also represented by a span with a single
  * character, with CSS classes '.tile' and '.tile_<glyph number>'.
  *
@@ -246,6 +251,10 @@ hterm.TextAttributes.prototype.createContainer = function(textContent = '') {
     classes.push('wc-node');
     span.wcNode = true;
   }
+  if (this.cellNode) {
+    classes.push('cell-node');
+    span.cellNode = true;
+  }
   span.asciiNode = this.asciiNode;
 
   if (this.tileData != null) {
@@ -292,12 +301,13 @@ hterm.TextAttributes.prototype.matchesContainer = function(obj) {
 
   const style = obj.style;
 
-  // We don't want to put multiple characters in a wcNode or a tile.
-  // See the comments in createContainer.
+  // We don't want to put multiple characters in a wcNode, a cellNode or a
+  // tile.  See the comments in createContainer.
   // For attributes that default to false, we do not require that obj have them
   // declared, so always normalize them using !! (to turn undefined into false)
   // in the compares below.
   return (!(this.wcNode || obj.wcNode) &&
+          !(this.cellNode || obj.cellNode) &&
           this.asciiNode == obj.asciiNode &&
           !(this.tileData != null || obj.tileNode) &&
           this.uriId == obj.uriId &&
@@ -497,14 +507,19 @@ hterm.TextAttributes.nodeSubstring = function(node, start, end) {
  * characters and runs of double-width characters.
  *
  * @param {string} str The string to split.
- * @return {!Array<{str:string, wcNode:boolean, asciiNode:boolean,
- *     wcStrWidth:number}>} An array of objects that contain substrings of str,
- *     where each substring is either a contiguous runs of single-width
- *     characters or a double-width character.  For objects that contain a
- *     double-width character, its wcNode property is set to true.  For objects
- *     that contain only ASCII content, its asciiNode property is set to true.
+ * @param {function(string): boolean=} misfit Says whether a single-width,
+ *     non-ASCII grapheme's glyph is some width other than one column.  Each
+ *     one it picks out becomes a substring of its own.
+ * @return {!Array<{str:string, wcNode:boolean, cellNode:boolean,
+ *     asciiNode:boolean, wcStrWidth:number}>} An array of objects that contain
+ *     substrings of str, where each substring is either a contiguous runs of
+ *     single-width characters, a double-width character, or a misfit
+ *     single-width character.  For objects that contain a double-width
+ *     character, its wcNode property is set to true; for a misfit, its
+ *     cellNode property.  For objects that contain only ASCII content, its
+ *     asciiNode property is set to true.
  */
-hterm.TextAttributes.splitWidecharString = function(str) {
+hterm.TextAttributes.splitWidecharString = function(str, misfit = undefined) {
   const asciiRegex = new RegExp('^[\u0020-\u007f]*$');
 
   // Optimize for printable ASCII.  This should only take ~1ms/MB, but cuts out
@@ -513,6 +528,7 @@ hterm.TextAttributes.splitWidecharString = function(str) {
     return [{
       str: str,
       wcNode: false,
+      cellNode: false,
       asciiNode: true,
       wcStrWidth: str.length,
     }];
@@ -532,11 +548,13 @@ hterm.TextAttributes.splitWidecharString = function(str) {
     const strWidth = isAscii ? 1 : lib.wc.strWidth(grapheme);
     const isWideChar =
         isAscii ? false : (lib.wc.charWidth(grapheme.codePointAt(0)) == 2);
+    const isMisfit = !isAscii && !isWideChar && strWidth == 1 &&
+        misfit !== undefined && misfit(grapheme);
 
-    // Only merge non-wide characters together.  Every wide character needs to
-    // be separate so it can get a unique container.
+    // Only merge well-fitting non-wide characters together.  Every wide or
+    // misfit character needs to be separate so it can get a unique container.
     const prev = rv[rv.length - 1];
-    if (prev && !isWideChar && !prev.wcNode) {
+    if (prev && !isWideChar && !isMisfit && !prev.wcNode && !prev.cellNode) {
       prev.str += grapheme;
       prev.wcStrWidth += strWidth;
       prev.asciiNode = prev.asciiNode && isAscii;
@@ -544,6 +562,7 @@ hterm.TextAttributes.splitWidecharString = function(str) {
       rv.push({
         str: grapheme,
         wcNode: isWideChar,
+        cellNode: isMisfit,
         asciiNode: isAscii,
         wcStrWidth: strWidth,
       });
