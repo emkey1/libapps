@@ -42,8 +42,8 @@ hterm.KittyGraphics = function(terminal) {
 hterm.KittyGraphics.maxStoredBytes = 64 * 1024 * 1024;
 
 /**
- * Most images drawn that are remembered for deletion. Past it the oldest are
- * left to their rows, as text is.
+ * Most images kept on screen and in the scrollback. Past it the oldest is
+ * taken off its rows, so every image drawn can still be cleared.
  */
 hterm.KittyGraphics.maxPlacements = 1000;
 
@@ -377,9 +377,15 @@ hterm.KittyGraphics.prototype.place_ = function(image, keys) {
   });
   this.placements_.push(placement);
   if (this.placements_.length > hterm.KittyGraphics.maxPlacements) {
-    this.placements_.shift();
+    const oldest = this.placements_[0];
+    this.removePlacements_((p) => p === oldest);
   }
   this.imageUrl_(image).then((url) => {
+    if (placement.removed) {
+      // Cleared before its pixels were ready.
+      URL.revokeObjectURL(url);
+      return;
+    }
     placement.url = url;
     placement.rows.forEach((row) => hterm.KittyGraphics.paintRow(row));
   }, () => {});
@@ -503,13 +509,24 @@ hterm.KittyGraphics.prototype.delete_ = function(keys) {
     default:
       return;
   }
+  this.removePlacements_(matches);
+};
+
+/**
+ * Take images off the screen: every placement the test matches, from every
+ * row it covers.
+ *
+ * @param {function(!Object): boolean} matches
+ */
+hterm.KittyGraphics.prototype.removePlacements_ = function(matches) {
   this.placements_ = this.placements_.filter((placement) => {
     if (!matches(placement)) {
       return true;
     }
+    placement.removed = true;
     for (const row of placement.rows) {
       row.kittyLayers_ =
-          row.kittyLayers_.filter((l) => l.placement !== placement);
+          (row.kittyLayers_ || []).filter((l) => l.placement !== placement);
       hterm.KittyGraphics.paintRow(row);
     }
     if (placement.url) {
@@ -517,6 +534,26 @@ hterm.KittyGraphics.prototype.delete_ = function(keys) {
     }
     return false;
   });
+};
+
+/**
+ * The screen was erased (ED 2, `clear`): its images go, as in kitty, whole
+ * even where they reach up into the scrollback.
+ *
+ * @param {!Array<!Element>} rows The rows that were erased.
+ */
+hterm.KittyGraphics.prototype.clearRows = function(rows) {
+  const erased = new Set(rows);
+  this.removePlacements_(
+      (placement) => placement.rows.some((row) => erased.has(row)));
+};
+
+/**
+ * Everything goes: a full reset (RIS, `reset`).
+ */
+hterm.KittyGraphics.prototype.clearAll = function() {
+  this.removePlacements_(() => true);
+  this.reset();
 };
 
 /**

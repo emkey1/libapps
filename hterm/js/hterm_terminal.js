@@ -1538,6 +1538,8 @@ hterm.Terminal.prototype.clearScrollback = function() {
   // We're going to throw it away which would leave the display invalid.
   this.scrollEnd();
 
+  // Images in the scrollback go with it.
+  this.kittyGraphics.clearRows(this.scrollbackRows_);
   this.scrollbackRows_.length = 0;
   this.scrollPort_.resetCache();
 
@@ -1558,7 +1560,7 @@ hterm.Terminal.prototype.clearScrollback = function() {
  */
 hterm.Terminal.prototype.reset = function() {
   this.vt.reset();
-  this.kittyGraphics.reset();
+  this.kittyGraphics.clearAll();
 
   this.clearAllTabStops();
   this.setDefaultTabStops();
@@ -2593,6 +2595,9 @@ hterm.Terminal.prototype.clearHome = function(screen = undefined) {
     // Empty screen, nothing to do.
     return;
   }
+
+  // Images on the screen go with its text (kitty does the same).
+  this.kittyGraphics.clearRows(screen.rowsArray);
 
   for (let i = 0; i < bottom; i++) {
     screen.setCursorPosition(i, 0);
