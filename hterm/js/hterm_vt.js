@@ -1482,7 +1482,8 @@ hterm.VT.ESC['^'] = function(parseState) {
 /**
  * Application Program Control (APC).
  *
- * Will not implement.
+ * Only kitty's graphics protocol (APC G ... ST) is implemented; anything else
+ * is read to its terminator and dropped.
  *
  * @this {!hterm.VT}
  * @param {!hterm.VT.ParseState} parseState The current parse state.
@@ -1490,7 +1491,25 @@ hterm.VT.ESC['^'] = function(parseState) {
 hterm.VT.CC1['\x9f'] =
 hterm.VT.ESC['_'] = function(parseState) {
   parseState.resetArguments();
-  parseState.func = this.parseUntilStringTerminator_;
+
+  /**
+   * @param {!hterm.VT.ParseState} parseState The current parse state.
+   */
+  function parseAPC(parseState) {
+    if (!this.parseUntilStringTerminator_(parseState)) {
+      return;
+    }
+    if (parseState.func == parseAPC) {
+      return;
+    }
+    const body = parseState.args[0];
+    parseState.resetArguments();
+    if (body.startsWith('G')) {
+      this.terminal.kittyGraphics.command(body.slice(1));
+    }
+  }
+
+  parseState.func = parseAPC;
 };
 
 /**
@@ -3152,9 +3171,35 @@ hterm.VT.CSI['?s'] = hterm.VT.ignore;
 /**
  * Window manipulation (from dtterm, as well as extensions).
  *
- * Will not implement.
+ * Only the size reports are implemented, which programs that draw images use
+ * to size them: 14 (text area in pixels), 16 (cell in pixels) and 18 (text
+ * area in characters). Pixels are device pixels, as in TIOCGWINSZ.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
-hterm.VT.CSI['t'] = hterm.VT.ignore;
+hterm.VT.CSI['t'] = function(parseState) {
+  const terminal = this.terminal;
+  const columns = terminal.screenSize.width;
+  const rows = terminal.screenSize.height;
+  switch (parseState.iarg(0, 0)) {
+    case 14: {
+      const cell = terminal.getCellPixelSize();
+      terminal.io.sendString(`\x1b[4;${Math.round(rows * cell.height)};` +
+                             `${Math.round(columns * cell.width)}t`);
+      break;
+    }
+    case 16: {
+      const cell = terminal.getCellPixelSize();
+      terminal.io.sendString(`\x1b[6;${Math.round(cell.height)};` +
+                             `${Math.round(cell.width)}t`);
+      break;
+    }
+    case 18:
+      terminal.io.sendString(`\x1b[8;${rows};${columns}t`);
+      break;
+  }
+};
 
 /**
  * Reverse Attributes in Rectangular Area (DECRARA).

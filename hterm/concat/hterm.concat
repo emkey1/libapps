@@ -29,6 +29,7 @@ hterm/js/hterm_terminal.js
 hterm/js/hterm_terminal_io.js
 hterm/js/hterm_text_attributes.js
 hterm/js/hterm_vt.js
+hterm/js/hterm_kitty_graphics.js
 hterm/js/hterm_vt_character_map.js
 
 @include hterm/concat/hterm_resources.concat

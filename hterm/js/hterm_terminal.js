@@ -165,6 +165,9 @@ hterm.Terminal = function({profileId} = {}) {
   // The VT escape sequence interpreter.
   this.vt = new hterm.VT(this);
 
+  // Images sent with kitty's graphics protocol (APC G).
+  this.kittyGraphics = new hterm.KittyGraphics(this);
+
   this.saveCursorAndState(true);
 
   // The keyboard handler.
@@ -1555,6 +1558,7 @@ hterm.Terminal.prototype.clearScrollback = function() {
  */
 hterm.Terminal.prototype.reset = function() {
   this.vt.reset();
+  this.kittyGraphics.reset();
 
   this.clearAllTabStops();
   this.setDefaultTabStops();
@@ -1969,6 +1973,29 @@ transition: opacity, background-color 100ms linear;`;
  */
 hterm.Terminal.prototype.getDocument = function() {
   return this.document_;
+};
+
+/**
+ * Device pixels per CSS pixel where the terminal is drawn.
+ *
+ * @return {number}
+ */
+hterm.Terminal.prototype.getDevicePixelRatio = function() {
+  const view = this.document_ && this.document_.defaultView;
+  return (view && view.devicePixelRatio) || globalThis.devicePixelRatio || 1;
+};
+
+/**
+ * One character cell's size in device pixels: what programs that draw images
+ * are told (TIOCGWINSZ, CSI 16 t), so that an image drawn at its own pixel size
+ * covers the cells they expect.
+ *
+ * @return {{width: number, height: number}}
+ */
+hterm.Terminal.prototype.getCellPixelSize = function() {
+  const cell = this.scrollPort_.characterSize;
+  const ratio = this.getDevicePixelRatio();
+  return {width: cell.width * ratio, height: cell.height * ratio};
 };
 
 /**
