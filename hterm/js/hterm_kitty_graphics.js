@@ -549,6 +549,26 @@ hterm.KittyGraphics.prototype.clearRows = function(rows) {
 };
 
 /**
+ * Part of the screen was erased (ED 0 or 1): images whose rows on the screen
+ * were all erased go, whole. One the erase only cut through stays, as text
+ * does, and one entirely in the scrollback is not touched.
+ *
+ * @param {!Array<!Element>} erased The rows erased completely.
+ * @param {!Array<!Element>} screen The rows on the screen.
+ */
+hterm.KittyGraphics.prototype.clearErasedRows = function(erased, screen) {
+  if (!erased.length || !this.placements_.length) {
+    return;
+  }
+  const erasedSet = new Set(erased);
+  const screenSet = new Set(screen);
+  this.removePlacements_((placement) => {
+    const onScreen = placement.rows.filter((row) => screenSet.has(row));
+    return onScreen.length > 0 && onScreen.every((row) => erasedSet.has(row));
+  });
+};
+
+/**
  * Everything goes: a full reset (RIS, `reset`).
  */
 hterm.KittyGraphics.prototype.clearAll = function() {

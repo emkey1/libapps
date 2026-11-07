@@ -2521,6 +2521,10 @@ hterm.Terminal.prototype.eraseLine = function() {
 hterm.Terminal.prototype.eraseAbove = function() {
   const cursor = this.saveCursor();
 
+  // Images wholly inside the erased rows go with them.
+  this.kittyGraphics.clearErasedRows(
+      this.screen_.rowsArray.slice(0, cursor.row), this.screen_.rowsArray);
+
   this.eraseToLeft();
 
   for (let i = 0; i < cursor.row; i++) {
@@ -2540,6 +2544,13 @@ hterm.Terminal.prototype.eraseAbove = function() {
  */
 hterm.Terminal.prototype.eraseBelow = function() {
   const cursor = this.saveCursor();
+
+  // Images wholly inside the erased rows go with them: BusyBox's `clear` is
+  // this from the home position, not ED 2. The cursor's row counts only when
+  // all of it is erased.
+  const firstErased = cursor.column == 0 ? cursor.row : cursor.row + 1;
+  this.kittyGraphics.clearErasedRows(
+      this.screen_.rowsArray.slice(firstErased), this.screen_.rowsArray);
 
   this.eraseToRight();
 
