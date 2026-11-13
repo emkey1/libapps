@@ -107,6 +107,15 @@ hterm.ScrollPort = function(rowProvider) {
   this.isScrolledEnd = true;
 
   /**
+   * Resizes whose 'resize' notice has not reached its subscribers yet; while
+   * there are any, isScrolledEnd keeps the value it had before the resize.
+   * See resize().
+   *
+   * @type {number}
+   */
+  this.resizesPending_ = 0;
+
+  /**
    * A guess at the current scrollbar width, fixed in resize().
    */
   this.currentScrollbarWidthPx = hterm.ScrollPort.DEFAULT_SCROLLBAR_WIDTH;
@@ -1049,9 +1058,22 @@ hterm.ScrollPort.prototype.resize = function() {
   this.syncScrollHeight();
   this.syncRowNodesDimensions_();
 
+  // The terminal hears about this from a timeout (hterm.PubSub), and decides
+  // from isScrolledEnd whether to keep the view on the last row. Until then
+  // the row count is the old one and the geometry the new, so a redraw in
+  // between -- WebKit sends the scroll event for clamping scrollTop to the
+  // taller screen only after this has run -- measured the bottom margin's
+  // growth as being scrolled up, and a terminal that was at the end stayed
+  // short of it: a row of scrollback above a full-screen program, its own
+  // bottom row cut off (btop, 12 to 21 rows in landscape, where the margin
+  // grew 9px on a 15px row).
+  this.resizesPending_++;
   this.publish(
       'resize', {scrollPort: this},
-      () => this.scheduleRedraw());
+      () => {
+        this.resizesPending_--;
+        this.scheduleRedraw();
+      });
 };
 
 /**
@@ -1213,8 +1235,10 @@ hterm.ScrollPort.prototype.redraw_ = function() {
   this.previousRowNodeCache_ = this.currentRowNodeCache_;
   this.currentRowNodeCache_ = null;
 
-  this.isScrolledEnd = (
-    this.getTopRowIndex() + this.visibleRowCount >= this.lastRowCount_);
+  if (!this.resizesPending_) {
+    this.isScrolledEnd = (
+      this.getTopRowIndex() + this.visibleRowCount >= this.lastRowCount_);
+  }
 
   this.updateScrollButtonState_();
 };
